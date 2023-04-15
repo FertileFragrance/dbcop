@@ -5,7 +5,7 @@ use clap::{App, AppSettings, Arg, SubCommand};
 use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster};
 use db::cluster::Cluster;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 
 use rand::distributions::{Bernoulli, Distribution, Uniform};
 
@@ -121,6 +121,12 @@ fn main() {
                     .takes_value(true)
                     .help("Directory containing executed history"),
             ),
+            SubCommand::with_name("convert").arg(
+                Arg::with_name("directory")
+                    .short('d')
+                    .takes_value(true)
+                    .help("Directory containing generated workload"),
+            ),
             SubCommand::with_name("run")
                 .about("Execute operations on db")
                 .arg(
@@ -156,6 +162,19 @@ fn main() {
     let app_matches = app.get_matches();
 
     match app_matches.subcommand() {
+        Some(("convert", m)) => {
+            for i in 0..10 {
+                let v_path = Path::new(m.value_of("directory").unwrap()).join(format!("hist-{:05}.bincode", i));
+                let file = File::open(v_path).unwrap();
+                let buf_reader = BufReader::new(file);
+                let hist: History = bincode::deserialize_from(buf_reader).unwrap();
+                let out_path = Path::new(m.value_of("directory").unwrap()).join(format!("hist-{:05}.json", i));
+                fs::write(
+                    out_path,
+                    serde_json::to_string_pretty(&hist).unwrap()
+                ).unwrap();
+            }
+        }
         Some(("print", m)) => {
             let v_path = Path::new(m.value_of("directory").unwrap()).join("history.bincode");
             let file = File::open(v_path).unwrap();

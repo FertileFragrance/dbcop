@@ -11,7 +11,7 @@
     Make sure `~/.cargo/bin` is in your system path.
 ```
     cd dbcop
-    dbcop install --path .
+    cargo install --path .
     dbcop --help
 ```
 ---

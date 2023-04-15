@@ -15,7 +15,7 @@ zipf = "7.0.0"
 dgraph-tonic = { version = "0.10.0", features = ["sync"] }
 postgres = "0.19.3"
 indicatif = "0.16.2"
-mysql = "22.2.0"
+mysql = "23.0.0"
 # rsmgclient = "2.0.0"
 cxx = "1.0.72"
 

@@ -2,7 +2,7 @@ use std::fmt;
 
 use std::collections::HashMap;
 
-use rand::distributions::{Distribution, Bernoulli};
+use rand::distributions::{Distribution, Bernoulli, Uniform};
 
 use super::distribution::MyDistributionTrait;
 
@@ -25,6 +25,20 @@ pub struct Transaction {
 }
 
 pub type Session = Vec<Transaction>;
+
+#[derive(Clone, Copy)]
+pub struct HistoryParams<'a> {
+    pub n_hist: usize,
+    pub n_node: usize,
+    pub n_variable: usize,
+    pub n_transaction: usize,
+    pub n_event: usize,
+    pub read_probability: f64,
+    pub longtxn_proportion: f64,
+    pub longtxn_size: f64,
+    pub key_distribution: &'a dyn MyDistributionTrait,
+    pub random_txn_size: bool,
+}
 
 impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -152,28 +166,41 @@ impl History {
 }
 
 pub fn generate_single_history(
-    n_node: usize,
-    n_variable: usize,
-    n_transaction: usize,
-    n_event: usize,
-    read_probability: f64,
-    key_distribution: &dyn MyDistributionTrait,
+    params: HistoryParams
 ) -> Vec<Session> {
     let mut counters = HashMap::new();
     let mut random_generator = rand::thread_rng();
-    let read_distribution = Bernoulli::new(read_probability).unwrap();
-    let _jump = (n_variable as f64 / n_node as f64).ceil() as usize;
-    (0..n_node).map(|_| {
+    let read_distribution = Bernoulli::new(params.read_probability).unwrap();
+    let longtxn_distribution = Bernoulli::new(params.longtxn_proportion).unwrap();
+    let shorttxn_size_distribution = Uniform::new(1, 2 * params.n_event - 1);
+    let longtxn_size_distribution = Uniform::new((params.n_event as f64 * params.longtxn_size * 0.5) as usize,
+                                                 (params.n_event as f64 * params.longtxn_size * 1.5) as usize);
+    // let _jump = (params.n_variable as f64 / params.n_node as f64).ceil() as usize;
+    (0..params.n_node).map(|_| {
         // let i = i_node * jump;
         // let j = std::cmp::min((i_node + 1) * jump, n_variable);
         // let write_variable_range = Uniform::from(i..j);
-        (0..n_transaction).map(|_| Transaction {
-            events: (0..n_event).map(|_| {
+        (0..params.n_transaction).map(|_| {
+            let size = if params.random_txn_size {
+                if longtxn_distribution.sample(&mut random_generator) {
+                    longtxn_size_distribution.sample(&mut random_generator)
+                } else {
+                    shorttxn_size_distribution.sample(&mut random_generator)
+                }
+            } else {
+                if longtxn_distribution.sample(&mut random_generator) {
+                    (params.n_event as f64 * params.longtxn_size) as usize
+                } else {
+                    params.n_event
+                }
+            };
+
+            let generate_event = |_| {
                 if read_distribution.sample(&mut random_generator) {
-                    let variable = key_distribution.sample(&mut random_generator);
+                    let variable = params.key_distribution.sample(&mut random_generator);
                     Event::read(variable)
                 } else {
-                    let variable = key_distribution.sample(&mut random_generator);
+                    let variable = params.key_distribution.sample(&mut random_generator);
                     // let variable = write_variable_range.sample(&mut random_generator);
                     let value = {
                         let entry = counters.entry(variable).or_insert(0);
@@ -182,39 +209,32 @@ pub fn generate_single_history(
                     };
                     Event::write(variable, value)
                 }
-            }).collect(),
-            success: false,
+            };
+
+            Transaction {
+                events: (0..size).map(generate_event).collect(),
+                success: false,
+            }
         }).collect()
     }).collect()
 }
 
 pub fn generate_mult_histories(
-    n_hist: usize,
-    n_node: usize,
-    n_variable: usize,
-    n_transaction: usize,
-    n_event: usize,
-    read_probability: f64,
-    key_distribution: &dyn MyDistributionTrait,
+    params: HistoryParams
 ) -> Vec<History> {
-    (0..n_hist).map(|i_hist| {
+    (0..params.n_hist).map(|i_hist| -> History {
         let start_time = Local::now();
         let hist = generate_single_history(
-            n_node,
-            n_variable,
-            n_transaction,
-            n_event,
-            read_probability,
-            key_distribution
+            params
         );
         let end_time = Local::now();
         History {
             params: HistParams {
                 id: i_hist,
-                n_node,
-                n_variable,
-                n_transaction,
-                n_event,
+                n_node: params.n_node,
+                n_variable: params.n_variable,
+                n_transaction: params.n_transaction,
+                n_event: params.n_event,
             },
             info: "generated".to_string(),
             start: start_time,

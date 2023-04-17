@@ -15,10 +15,10 @@ use std::net::SocketAddr;
 use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
-
 // use std::convert::From;
 
 // use serde_yaml;
+use log::{info, warn};
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -53,6 +53,7 @@ where
     }
 
     fn execute_all(&mut self, r_dir: &Path, o_dir: &Path, millisec: u64) -> Option<usize> {
+        info!("Reading all histories from {:?}", r_dir);
         let histories: Vec<History> = fs::read_dir(r_dir)
             .unwrap()
             .filter_map(|entry_res| match entry_res {
@@ -65,44 +66,48 @@ where
             })
             .collect();
 
-        // let histories: Vec<History> = (0..1000)
-        //     .flat_map(|id| {
-        //         let filename = format!("hist-{:05}.json", id);
-        //         println!("hello");
-        //         let file = File::open(r_dir.join(filename)).unwrap();
-        //         let buf_reader = BufReader::new(file);
-        //         serde_json::from_reader(buf_reader)
-        //     })
-        //     .collect();
-
+        info!("Successfully reading {} histories", histories.len());
+    
+        let mut executed_count = 0;
+    
         for history in histories.iter() {
             let curr_dir = o_dir.join(format!("hist-{:05}", history.get_id()));
+            info!("Create output directory of {:?}", curr_dir);
             if fs::create_dir(&curr_dir).is_ok() {
+                info!("Created successfully! Ready to execute this history");
                 self.execute(history, &curr_dir);
+                executed_count += 1;
                 sleep(Duration::from_millis(millisec));
             } else {
-                println!("skipping {:?}", curr_dir)
+                warn!("The output directory is not empty, so skipping");
             }
         }
+
+        info!("Successfully Executed {} histories", executed_count);
 
         None
     }
 
     fn execute(&mut self, hist: &History, dir: &Path) -> Option<usize> {
+        info!("Step-1: setup");
         self.setup();
 
+        info!("Step-2: setup-test");
         self.setup_test(hist.get_params());
 
         let mut exec = hist.get_cloned_data();
 
         let start_time = chrono::Local::now();
 
+        info!("Step-3: exec-history");
         self.exec_history(&mut exec);
 
         let end_time = chrono::Local::now();
 
+        info!("Step-4: clean up");
         self.cleanup();
 
+        info!("Step-5: write out");
         let exec_hist = History::new(
             hist.get_cloned_params(),
             self.info(),
@@ -122,13 +127,16 @@ where
         let mut threads = (0..self.n_node())
             .cycle()
             .zip(hist.drain(..))
-            .map(|(node_id, mut single_hist)| {
-                // println!("Executing on node {}: {:?}", node_id, single_hist);
+            .enumerate()
+            .map(|(index, (node_id, mut single_hist))| {
                 let cluster_node = self.get_cluster_node(node_id);
-                thread::spawn(move || {
-                    cluster_node.exec_session(&mut single_hist);
-                    single_hist
-                })
+                let session_name = format!("session-{}", index);
+                thread::Builder::new()
+                    .name(session_name)
+                    .spawn(move || {
+                        cluster_node.exec_session(&mut single_hist);
+                        single_hist
+                    }).unwrap()
             })
             .collect::<Vec<_>>();
         hist.extend(threads.drain(..).map(|t| t.join().unwrap()));

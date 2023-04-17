@@ -2,7 +2,7 @@ mod clients;
 mod db;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster, TDSQLCluster};
 use db::cluster::Cluster;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -18,6 +18,8 @@ use db::history::{generate_mult_histories, HistoryParams};
 use db::history::History;
 
 use zipf::ZipfDistribution;
+
+use env_logger::{Builder, Target};
 
 struct HotspotDistribution {
     hot_probability: Bernoulli,
@@ -90,6 +92,7 @@ enum Commands {
         #[clap(long, action, help = "Randomize size of transactions")]
         random_txn_size: bool,
     },
+    #[clap(about = "Print executed history")]
     Print {
         #[clap(short = 'd', help = "Directory containing executed history")]
         directory: PathBuf,
@@ -117,10 +120,15 @@ enum KeyDistribution {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Database {
-    Memgraph, Postgres, PostgresSer, Dgraph, Galera, Mysql
+    Memgraph, Postgres, PostgresSer, Dgraph, Galera, Mysql, Tdsql
 }
 
 fn main() {
+    Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .target(Target::Stdout)
+        .init();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -184,6 +192,7 @@ fn main() {
                 Database::Dgraph => Box::new(DynCluster::new(DGraphCluster::new(&addrs_str))),
                 Database::Galera => Box::new(DynCluster::new(GaleraCluster::new(&addrs_str))),
                 Database::Mysql => Box::new(DynCluster::new(MySQLCluster::new(&addrs_str))),
+                Database::Tdsql => Box::new(DynCluster::new(TDSQLCluster::new(&addrs_str))),
             };
 
             cluster.execute_all(&hist_dir.as_path(), &hist_out.as_path(), 100);

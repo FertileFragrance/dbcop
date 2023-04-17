@@ -18,6 +18,8 @@ indicatif = "0.16.2"
 mysql = "23.0.0"
 # rsmgclient = "2.0.0"
 cxx = "1.0.72"
+log = "0.4"
+env_logger = "0.10.0"
 
 [build-dependencies]
 cmake = "0.1.48"
@@ -26,4 +28,5 @@ cxx-build = "1.0.72"
 [profile.release]
 opt-level = 3
 debug = true
+incresemental = true
 

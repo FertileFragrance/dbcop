@@ -2,7 +2,7 @@ mod clients;
 mod db;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster, TDSQLCluster};
+use clients::{DynCluster, DynNode, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster, TDSQLCluster};
 use db::cluster::Cluster;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -120,7 +120,7 @@ enum KeyDistribution {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Database {
-    Memgraph, Postgres, PostgresSer, Dgraph, Galera, Mysql, Tdsql
+    Postgres, PostgresSer, Dgraph, Galera, Mysql, Tdsql
 }
 
 fn main() {
@@ -186,7 +186,6 @@ fn main() {
             let addrs_str = addrs.iter().map(|addr| addr.as_str()).collect();
 
             let mut cluster: Box<dyn Cluster<DynNode>> = match database {
-                Database::Memgraph => Box::new(DynCluster::new(MemgraphCluster::new(&addrs_str))),
                 Database::Postgres => Box::new(DynCluster::new(PostgresCluster::new(&addrs_str))),
                 Database::PostgresSer => Box::new(DynCluster::new(PostgresSERCluster::new(&addrs_str))),
                 Database::Dgraph => Box::new(DynCluster::new(DGraphCluster::new(&addrs_str))),

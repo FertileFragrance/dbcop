@@ -20,6 +20,7 @@ mysql = "23.0.0"
 cxx = "1.0.72"
 log = "0.4"
 env_logger = "0.10.0"
+walkdir = "2"
 
 [build-dependencies]
 cmake = "0.1.48"

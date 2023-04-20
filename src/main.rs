@@ -9,7 +9,8 @@ use std::io::{BufReader, BufWriter, Write};
 
 use rand::distributions::{Bernoulli, Distribution, Uniform};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 use std::fs;
 
@@ -20,6 +21,7 @@ use db::history::History;
 use zipf::ZipfDistribution;
 
 use env_logger::{Builder, Target};
+use log::{info};
 
 struct HotspotDistribution {
     hot_probability: Bernoulli,
@@ -97,6 +99,14 @@ enum Commands {
         #[clap(short = 'd', help = "Directory containing executed history")]
         directory: PathBuf,
     },
+    #[clap(about = "Convert bincode testcase into json one OR json history into bincode one")]
+    Convert {
+        #[clap(short = 'd', help = "Directory containing testcases or history")]
+        directory: PathBuf,
+
+        #[clap(value_enum, long = "from", help = "Source format")]
+        format: FileFormat,
+    },
     #[clap(about = "Execute operations on db")]
     Run {
         #[clap(long = "dir", short = 'd')]
@@ -123,6 +133,11 @@ enum Database {
     Postgres, PostgresSer, Dgraph, Galera, Mysql, Tdsql
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum FileFormat {
+    Bincode, Json
+}
+
 fn main() {
     Builder::new()
         .filter_level(log::LevelFilter::Info)
@@ -139,6 +154,49 @@ fn main() {
             let hist: History = bincode::deserialize_from(buf_reader).unwrap();
 
             println!("{:?}", hist);
+        }
+        Commands::Convert { directory, format  } => {
+            WalkDir::new(&directory).into_iter().for_each(
+                |entry| {
+                    let entry = entry.unwrap();
+                    let path = entry.path();
+                    if path.is_file() {
+                        let file_name = path.file_name().unwrap().to_str().unwrap();
+                        match format {
+                            FileFormat::Bincode => {
+                                if file_name.starts_with("hist") && file_name.ends_with(".bincode") {
+                                    // convert bincode to json
+                                    let input_path = &directory.join(file_name);
+                                    let file = File::open(input_path).unwrap();
+                                    let buf_reader = BufReader::new(file);
+                                    let hist: History = bincode::deserialize_from(buf_reader).unwrap();
+                                    let output_path: &PathBuf = &directory.join(file_name.replace("bincode", "json"));
+                                    fs::write(
+                                        output_path,
+                                        serde_json::to_string_pretty(&hist).unwrap()
+                                    ).unwrap();
+                                    info!("Converting {:?} to {:?}", file_name, output_path.as_path().file_name().unwrap());
+                                }
+                            },
+                            FileFormat::Json => {
+                                if file_name.starts_with("hist") && file_name.ends_with(".json") {
+                                    // convert json to bincode
+                                    let input_path = &directory.join(file_name);
+                                    let file = File::open(input_path).unwrap();
+                                    let buf_reader = BufReader::new(file);
+                                    let hist: History = serde_json::from_reader(buf_reader).unwrap();
+                                    let output_path: &PathBuf = &directory.join(file_name.replace(".json", "-back.bincode"));
+                                    fs::write(
+                                        output_path, 
+                                        bincode::serialize(&hist).unwrap())
+                                    .unwrap();
+                                    info!("Converting {:?} to {:?}", file_name, output_path.as_path().file_name().unwrap());
+                                }
+                            },
+                        }
+                    } 
+                }
+            );
         }
         Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size, random_txn_size } => {
             if !g_directory.is_dir() {
